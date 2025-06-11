@@ -1,4 +1,4 @@
-import aiohttp
+vimport aiohttp
 import json
 import serpapi
 import re
@@ -84,12 +84,16 @@ async def search_and_present(
                 content = data["choices"][0]["message"]["content"]
                 if not content or not content.strip():
                     raise Exception("প্রক্রিয়াকরণ ত্রুটি: Mistral প্রতিক্রিয়া খালি")
+                logger.info(f"Mistral raw content: {content[:500]}...")
+                # Strip ```json markers if present
+                content = re.sub(r'^```json\s*|\s*```$', '', content, flags=re.MULTILINE)
+                content = content.strip()
                 try:
-                    content = re.sub(r',\s*]', ']', content)
-                    content = re.sub(r',\s*}', '}', content)
                     llm_response = json.loads(content)
                 except json.JSONDecodeError as e:
-                    json_match = re.search(r'\{(?:[^{}]|(?R))*\}', content, re.DOTALL)
+                    logger.error(f"JSON parsing error: {str(e)}")
+                    # Fallback to extracting JSON block
+                    json_match = re.search(r'\{.*\}', content, re.DOTALL)
                     if json_match:
                         llm_response = json.loads(json_match.group(0))
                     else:
