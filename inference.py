@@ -5,6 +5,7 @@ import re
 from typing import Dict, List
 from utils import format_serp_results
 import logging
+import traceback
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -94,9 +95,16 @@ async def search_and_present(
                     else:
                         raise Exception("প্রক্রিয়াকরণ ত্রুটি: বৈধ JSON পাওয়া যায়নি")
                 return llm_response
+        except aiohttp.ClientConnectorError as e:
+            error_msg = f"Mistral connection error: {str(e)}"
+            logger.error(f"{error_msg}\n{traceback.format_exc()}")
+            return {
+                "summary": "সংযোগ ত্রুটি: Mistral API-এর সাথে সংযোগ করা যায়নি। অনুগ্রহ করে পরে চেষ্টা করুন।",
+                "sources": []
+            }
         except Exception as e:
             error_msg = str(e).replace('\n', ' ').replace('\r', ' ')[:200]
-            logger.error(f"Mistral processing error: {error_msg}")
+            logger.error(f"Mistral processing error: {error_msg}\n{traceback.format_exc()}")
             return {
                 "summary": "প্রক্রিয়াকরণ ত্রুটি: সার্ভারে সমস্যা হয়েছে। অনুগ্রহ করে পরে আবার চেষ্টা করুন।",
                 "sources": []
