@@ -55,7 +55,7 @@ async def search_and_present(
     async with aiohttp.ClientSession() as session:
         try:
             async with session.post(
-                "https://api.mixtral.ai/v1/chat/completions",
+                "https://api.mistral.ai/v1/chat/completions",
                 headers={
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {mistral_api_key}",
