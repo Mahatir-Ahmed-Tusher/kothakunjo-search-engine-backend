@@ -71,6 +71,15 @@ class SearchResponse(BaseModel):
     summary: str = Field(..., example="জীবনের অর্থ সম্পর্কে বিভিন্ন দর্শন রয়েছে...")
     sources: list[str] = Field(..., example=["https://example.com"])
 
+@app.get(
+    "/",
+    summary="Root endpoint",
+    description="Returns a welcome message for the Kothakunjo Search Engine",
+    tags=["General"]
+)
+async def root():
+    return {"message": "Welcome to Kothakunjo Search Engine"}
+
 @app.post(
     "/api/search",
     response_model=SearchResponse,
