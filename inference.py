@@ -13,12 +13,11 @@ logger = logging.getLogger(__name__)
 async def search_and_present(
     query: str,
     mistral_api_key: str,
-    openrouter_api_key: str,
     serpapi_api_key: str,
     language: str = "bn"
 ) -> Dict[str, str | List[str]]:
     """
-    Search the web using SerpAPI, generate a summary with Mistral, translate to Bengali with Grok.
+    Search the web using SerpAPI, generate a summary in English and translate to Bengali with Mistral.
     Returns: {"summary": "...", "sources": [...]}
     """
     # Step 1: Search authoritative sources
@@ -67,7 +66,7 @@ async def search_and_present(
                 error_text = await response.text()
                 raise Exception(f"Mistral API error: {response.status} - {error_text}")
             data = await response.json()
-            logger.info(f"Raw Mistral Response: {data}")  # Debug log
+            logger.info(f"Raw Mistral Summary Response: {data}")
             content = data["choices"][0]["message"]["content"]
             if not content or not content.strip():
                 raise Exception("প্রক্রিয়াকরণ ত্রুটি: Mistral প্রতিক্রিয়া খালি")
@@ -80,7 +79,7 @@ async def search_and_present(
                 else:
                     raise Exception("প্রক্রিয়াকরণ ত্রুটি: বৈধ JSON পাওয়া যায়নি")
 
-    # Step 4: Translate English summary to Bengali with Grok
+    # Step 4: Translate English summary to Bengali with Mistral
     translation_prompt = f"""Translate the following English summary into natural and accurate Bengali. Include the sources as provided:
     {json.dumps(english_response, ensure_ascii=False)}
     Return ONLY a valid JSON object with:
@@ -91,17 +90,14 @@ async def search_and_present(
 
     async with aiohttp.ClientSession() as session:
         try:
-            logger.info(f"OPENROUTER_API_KEY: {openrouter_api_key}")  # Debug log
             async with session.post(
-                "https://openrouter.ai/api/v1/chat/completions",
+                "https://api.mistral.ai/v1/chat/completions",
                 headers={
                     "Content-Type": "application/json",
-                    "Authorization": f"Bearer {openrouter_api_key}",
-                    "HTTP-Referer": "https://kothakunjo-search-engine-backend.onrender.com",  
-                    "X-Title": "Kothakunjo Search Engine",
+                    "Authorization": f"Bearer {mistral_api_key}",
                 },
                 json={
-                    "model": "xai/grok",
+                    "model": "mistral-small-latest",
                     "messages": [{
                         "role": "system",
                         "content": "You are a JSON-only Bengali translator. Return valid JSON with: summary, sources. No additional text."
@@ -115,20 +111,20 @@ async def search_and_present(
             ) as response:
                 status = response.status
                 response_text = await response.text()
-                logger.info(f"OpenRouter API response: Status {status}, Body: {response_text}")  # Debug log
+                logger.info(f"Mistral Translation API request: {translation_prompt}")
+                logger.info(f"Mistral Translation API response: Status {status}, Body: {response_text}")
                 if response.status != 200:
-                    raise Exception(f"OpenRouter API error: {status} - {response_text}")
+                    raise Exception(f"Mistral Translation API error: {status} - {response_text}")
                 data = await response.json()
                 content = data["choices"][0]["message"]["content"]
                 if not content or not content.strip():
-                    raise Exception("প্রক্রিয়াকরণ ত্রুটি: Grok প্রতিক্রিয়া খালি")
+                    raise Exception("প্রক্রিয়াকরণ ত্রুটি: Mistral প্রতিক্রিয়া খালি")
                 try:
-                    # Clean potential trailing incomplete JSON
-                    content = re.sub(r',\s*]', ']', content)  # Fix unterminated arrays
-                    content = re.sub(r',\s*}', '}', content)  # Fix unterminated objects
+                    content = re.sub(r',\s*]', ']', content)
+                    content = re.sub(r',\s*}', '}', content)
                     llm_response = json.loads(content)
                 except json.JSONDecodeError as e:
-                    json_match = re.search(r'\{(?:[^{}]|(?R))*\}', content, re.DOTALL)  # Robust JSON extraction
+                    json_match = re.search(r'\{(?:[^{}]|(?R))*\}', content, re.DOTALL)
                     if json_match:
                         llm_response = json.loads(json_match.group(0))
                     else:
@@ -136,7 +132,7 @@ async def search_and_present(
                 return llm_response
         except Exception as e:
             error_msg = str(e).replace('\n', ' ').replace('\r', ' ')[:200]
-            logger.error(f"OpenRouter processing error: {error_msg}")
+            logger.error(f"Mistral Translation processing error: {error_msg}")
             return {
                 "summary": "প্রক্রিয়াকরণ ত্রুটি: সার্ভারে সমস্যা হয়েছে। অনুগ্রহ করে পরে আবার চেষ্টা করুন।",
                 "sources": []
