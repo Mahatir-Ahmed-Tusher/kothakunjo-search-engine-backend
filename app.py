@@ -27,7 +27,7 @@ if not MISTRAL_API_KEY or not SERPAPI_API_KEY:
 
 app = FastAPI(
     title="Kothakunjo Search Engine",
-    description="A Bengali search engine using SerpAPI, Google, and Mistral for summarization and translation",
+    description="A Bengali search engine using SerpAPI and Mistral for summarization and translation",
     version="1.0.0",
     contact={
         "name": "Support",
@@ -55,7 +55,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 # CORS Configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "https://kothakunjo.vercel.app", "https://kothakunjo-search-engine-backend.onrender.com"],
+    allow_origins=["http://localhost:5173", "https://kothakunjo.vercel.app", "https://kothakunjo.onrender.com"],
     allow_methods=["POST", "GET", "OPTIONS"],
     allow_headers=["*"],
     allow_credentials=True,
@@ -80,6 +80,7 @@ class SearchResponse(BaseModel):
     responses={
         200: {"description": "Successful search"},
         400: {"description": "Invalid input"},
+        429: {"description": "API rate limit exceeded"},
         500: {"description": "Internal server error"}
     },
     tags=["Search"]
@@ -108,6 +109,11 @@ async def perform_search(request: SearchRequest):
         raise
     except Exception as e:
         logger.error(f"Search failed: {str(e)}", exc_info=True)
+        if "Mistral API error: 429" in str(e):
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="API কোটা অতিক্রম করেছে। অনুগ্রহ করে পরে আবার চেষ্টা করুন।"
+            )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="সার্চ অনুরোধ প্রক্রিয়াকরণে ব্যর্থ"
