@@ -4,7 +4,11 @@ import serpapi
 import re
 from typing import Dict, List
 from utils import format_serp_results
-from openai import OpenAI
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 async def search_and_present(
     query: str,
@@ -14,7 +18,7 @@ async def search_and_present(
     language: str = "bn"
 ) -> Dict[str, str | List[str]]:
     """
-    Search the web using SerpAPI, generate a summary with Mistral, translate to Bengali with DeepSeek.
+    Search the web using SerpAPI, generate a summary with Mistral, translate to Bengali with Grok.
     Returns: {"summary": "...", "sources": [...]}
     """
     # Step 1: Search authoritative sources
@@ -54,7 +58,7 @@ async def search_and_present(
             json={
                 "model": "mistral-small-latest",
                 "messages": [{"role": "user", "content": specialist_prompt}],
-                "max_tokens": 1000,  # Increased from 500 to accommodate full response
+                "max_tokens": 1000,
                 "temperature": 0.7,
                 "top_p": 0.9
             }
@@ -63,7 +67,7 @@ async def search_and_present(
                 error_text = await response.text()
                 raise Exception(f"Mistral API error: {response.status} - {error_text}")
             data = await response.json()
-            print(f"Raw Mistral Response: {data}")  # Debug log
+            logger.info(f"Raw Mistral Response: {data}")  # Debug log
             content = data["choices"][0]["message"]["content"]
             if not content or not content.strip():
                 raise Exception("প্রক্রিয়াকরণ ত্রুটি: Mistral প্রতিক্রিয়া খালি")
@@ -76,7 +80,7 @@ async def search_and_present(
                 else:
                     raise Exception("প্রক্রিয়াকরণ ত্রুটি: বৈধ JSON পাওয়া যায়নি")
 
-    # Step 4: Translate English summary to Bengali with DeepSeek
+    # Step 4: Translate English summary to Bengali with Grok
     translation_prompt = f"""Translate the following English summary into natural and accurate Bengali. Include the sources as provided:
     {json.dumps(english_response, ensure_ascii=False)}
     Return ONLY a valid JSON object with:
@@ -85,20 +89,19 @@ async def search_and_present(
         "sources": "List of up to 3 URLs"
     }}"""
 
-    # Debug: Print the API key to verify it’s being passed
-    print(f"OPENROUTER_API_KEY: {openrouter_api_key}")  # Debug log
     async with aiohttp.ClientSession() as session:
         try:
+            logger.info(f"OPENROUTER_API_KEY: {openrouter_api_key}")  # Debug log
             async with session.post(
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers={
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {openrouter_api_key}",
-                    "HTTP-Referer": "http://localhost:5173",
+                    "HTTP-Referer": "https://kothakunjo-search-engine-backend.onrender.com",  
                     "X-Title": "Kothakunjo Search Engine",
                 },
                 json={
-                    "model": "deepseek/deepseek-r1-0528:free",
+                    "model": "xai/grok",
                     "messages": [{
                         "role": "system",
                         "content": "You are a JSON-only Bengali translator. Return valid JSON with: summary, sources. No additional text."
@@ -110,14 +113,15 @@ async def search_and_present(
                     "max_tokens": 2000
                 }
             ) as response:
+                status = response.status
+                response_text = await response.text()
+                logger.info(f"OpenRouter API response: Status {status}, Body: {response_text}")  # Debug log
                 if response.status != 200:
-                    error_text = await response.text()
-                    raise Exception(f"DeepSeek API error: {response.status} - {error_text}")
+                    raise Exception(f"OpenRouter API error: {status} - {response_text}")
                 data = await response.json()
-                print(f"Raw DeepSeek Response: {data}")  # Debug log
                 content = data["choices"][0]["message"]["content"]
                 if not content or not content.strip():
-                    raise Exception("প্রক্রিয়াকরণ ত্রুটি: DeepSeek প্রতিক্রিয়া খালি")
+                    raise Exception("প্রক্রিয়াকরণ ত্রুটি: Grok প্রতিক্রিয়া খালি")
                 try:
                     # Clean potential trailing incomplete JSON
                     content = re.sub(r',\s*]', ']', content)  # Fix unterminated arrays
@@ -130,8 +134,10 @@ async def search_and_present(
                     else:
                         raise Exception("প্রক্রিয়াকরণ ত্রুটি: বৈধ JSON পাওয়া যায়নি")
                 return llm_response
-        except json.JSONDecodeError as e:
-            raise Exception(f"প্রক্রিয়াকরণ ত্রুটি: {str(e)}")
         except Exception as e:
             error_msg = str(e).replace('\n', ' ').replace('\r', ' ')[:200]
-            raise Exception(f"প্রক্রিয়াকরণ ত্রুটি: {error_msg}")
+            logger.error(f"OpenRouter processing error: {error_msg}")
+            return {
+                "summary": "প্রক্রিয়াকরণ ত্রুটি: সার্ভারে সমস্যা হয়েছে। অনুগ্রহ করে পরে আবার চেষ্টা করুন।",
+                "sources": []
+            }
