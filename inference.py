@@ -17,7 +17,7 @@ async def search_and_present(
     language: str = "bn"
 ) -> Dict[str, str | List[str]]:
     """
-    Search the web using SerpAPI, generate a summary in English and translate to Bengali with Mistral.
+    Search the web using SerpAPI and generate a Bengali summary with Mistral.
     Returns: {"summary": "...", "sources": [...]}
     """
     # Step 1: Search authoritative sources
@@ -33,88 +33,52 @@ async def search_and_present(
         )
         search_results = results.get("organic_results", [])
     except Exception as e:
-        raise Exception(f"সার্চ ত্রুটি: {str(e)}")
+        logger.error(f"SerpAPI error: {str(e)}")
+        return {
+            "summary": "সার্চ ত্রুটি: তথ্য অনুসন্ধানে সমস্যা হয়েছে।",
+            "sources": []
+        }
 
     # Step 2: Format results for LLM
     formatted_results = format_serp_results(search_results[:3])
 
-    # Step 3: Generate English summary with Mistral
-    specialist_prompt = f"""You are a search result summarizer. Analyze the following search results and provide a concise summary in English, including key points and citations where applicable:
-    {formatted_results}
-    Return ONLY a valid JSON object with:
-    {{
-        "summary": "1-2 paragraph summary in English",
-        "sources": "List of up to 3 URLs"
-    }}"""
-
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            "https://api.mistral.ai/v1/chat/completions",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {mistral_api_key}",
-            },
-            json={
-                "model": "mistral-small-latest",
-                "messages": [{"role": "user", "content": specialist_prompt}],
-                "max_tokens": 1000,
-                "temperature": 0.7,
-                "top_p": 0.9
-            }
-        ) as response:
-            if response.status != 200:
-                error_text = await response.text()
-                raise Exception(f"Mistral API error: {response.status} - {error_text}")
-            data = await response.json()
-            logger.info(f"Raw Mistral Summary Response: {data}")
-            content = data["choices"][0]["message"]["content"]
-            if not content or not content.strip():
-                raise Exception("প্রক্রিয়াকরণ ত্রুটি: Mistral প্রতিক্রিয়া খালি")
-            try:
-                english_response = json.loads(content)
-            except json.JSONDecodeError:
-                json_match = re.search(r'\{.*\}', content, re.DOTALL)
-                if json_match:
-                    english_response = json.loads(json_match.group(0))
-                else:
-                    raise Exception("প্রক্রিয়াকরণ ত্রুটি: বৈধ JSON পাওয়া যায়নি")
-
-    # Step 4: Translate English summary to Bengali with Mistral
-    translation_prompt = f"""Translate the following English summary into natural and accurate Bengali. Include the sources as provided:
-    {json.dumps(english_response, ensure_ascii=False)}
-    Return ONLY a valid JSON object with:
+    # Step 3: Generate English summary and translate to Bengali with Mistral
+    specialist_prompt = f"""You are a search result summarizer and translator. Analyze the following search results and provide a concise 1-2 paragraph summary in English, including key points and citations. Then, translate the summary into natural and accurate Bengali. Return ONLY a valid JSON object with:
     {{
         "summary": "1-2 paragraph summary in Bengali",
         "sources": "List of up to 3 URLs"
-    }}"""
+    }}
+    Search results:
+    {formatted_results}"""
 
     async with aiohttp.ClientSession() as session:
         try:
             async with session.post(
-                "https://api.mistral.ai/v1/chat/completions",
+                "https://api.mixtral.ai/v1/chat/completions",
                 headers={
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {mistral_api_key}",
                 },
                 json={
                     "model": "mistral-small-latest",
-                    "messages": [{
-                        "role": "system",
-                        "content": "You are a JSON-only Bengali translator. Return valid JSON with: summary, sources. No additional text."
-                    }, {
-                        "role": "user",
-                        "content": translation_prompt
-                    }],
-                    "temperature": 0.1,
-                    "max_tokens": 2000
+                    "messages": [{"role": "user", "content": specialist_prompt}],
+                    "max_tokens": 1500,
+                    "temperature": 0.7,
+                    "top_p": 0.9
                 }
             ) as response:
                 status = response.status
                 response_text = await response.text()
-                logger.info(f"Mistral Translation API request: {translation_prompt}")
-                logger.info(f"Mistral Translation API response: Status {status}, Body: {response_text}")
+                logger.info(f"Mistral API request: {specialist_prompt[:500]}...")
+                logger.info(f"Mistral API response: Status {status}, Body: {response_text}")
+                if response.status == 429:
+                    logger.error("Mistral API rate limit exceeded")
+                    return {
+                        "summary": "প্রক্রিয়াকরণ ত্রুটি: API কোটা অতিক্রম করেছে। অনুগ্রহ করে পরে আবার চেষ্টা করুন।",
+                        "sources": []
+                    }
                 if response.status != 200:
-                    raise Exception(f"Mistral Translation API error: {status} - {response_text}")
+                    raise Exception(f"Mistral API error: {status} - {response_text}")
                 data = await response.json()
                 content = data["choices"][0]["message"]["content"]
                 if not content or not content.strip():
@@ -132,7 +96,7 @@ async def search_and_present(
                 return llm_response
         except Exception as e:
             error_msg = str(e).replace('\n', ' ').replace('\r', ' ')[:200]
-            logger.error(f"Mistral Translation processing error: {error_msg}")
+            logger.error(f"Mistral processing error: {error_msg}")
             return {
                 "summary": "প্রক্রিয়াকরণ ত্রুটি: সার্ভারে সমস্যা হয়েছে। অনুগ্রহ করে পরে আবার চেষ্টা করুন।",
                 "sources": []
