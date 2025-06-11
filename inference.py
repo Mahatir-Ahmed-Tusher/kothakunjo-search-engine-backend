@@ -86,7 +86,7 @@ async def search_and_present(
     }}"""
 
     # Debug: Print the API key to verify it’s being passed
-    print(f"OPENROUTER_API_KEY: {openrouter_api_key}")  # Added debug log
+    print(f"OPENROUTER_API_KEY: {openrouter_api_key}")  # Debug log
     client = OpenAI(
         base_url="https://openrouter.ai/api/v1",
         api_key=openrouter_api_key,
@@ -96,6 +96,7 @@ async def search_and_present(
             extra_headers={
                 "HTTP-Referer": "http://localhost:5173",
                 "X-Title": "Kothakunjo Search Engine",
+                "Authorization": f"Bearer {openrouter_api_key}",  # Explicitly add Authorization header
             },
             model="deepseek/deepseek-r1-0528:free",
             messages=[{
