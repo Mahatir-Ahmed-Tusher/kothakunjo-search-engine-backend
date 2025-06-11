@@ -85,6 +85,8 @@ async def search_and_present(
         "sources": "List of up to 3 URLs"
     }}"""
 
+    # Debug: Print the API key to verify it’s being passed
+    print(f"OPENROUTER_API_KEY: {openrouter_api_key}")  # Added debug log
     client = OpenAI(
         base_url="https://openrouter.ai/api/v1",
         api_key=openrouter_api_key,
