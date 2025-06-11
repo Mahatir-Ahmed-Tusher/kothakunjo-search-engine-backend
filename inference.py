@@ -88,51 +88,50 @@ async def search_and_present(
     # Debug: Print the API key to verify it’s being passed
     print(f"OPENROUTER_API_KEY: {openrouter_api_key}")  # Debug log
     async with aiohttp.ClientSession() as session:
-        async with session.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {openrouter_api_key}",
-                "HTTP-Referer": "http://localhost:5173",
-                "X-Title": "Kothakunjo Search Engine",
-            },
-            json={
-                "model": "deepseek/deepseek-r1-0528:free",
-                "messages": [{
-                    "role": "system",
-                    "content": "You are a JSON-only Bengali translator. Return valid JSON with: summary, sources. No additional text."
-                }, {
-                    "role": "user",
-                    "content": translation_prompt
-                }],
-                "temperature": 0.1,
-                "max_tokens": 2000
-            }
-        ) as response:
-            if response.status != 200:
-                error_text = await response.text()
-                raise Exception(f"DeepSeek API error: {response.status} - {error_text}")
-            data = await response.json()
-            print(f"Raw DeepSeek Response: {data}")  # Debug log
-            content = data["choices"][0]["message"]["content"]
-            if not content or not content.strip():
-                raise Exception("প্রক্রিয়াকরণ ত্রুটি: DeepSeek প্রতিক্রিয়া খালি")
-            try:
-                # Clean potential trailing incomplete JSON
-                content = re.sub(r',\s*]', ']', content)  # Fix unterminated arrays
-                content = re.sub(r',\s*}', '}', content)  # Fix unterminated objects
-                llm_response = json.loads(content)
-            except json.JSONDecodeError as e:
-                json_match = re.search(r'\{(?:[^{}]|(?R))*\}', content, re.DOTALL)  # Robust JSON extraction
-                if json_match:
-                    llm_response = json.loads(json_match.group(0))
-                else:
-                    raise Exception("প্রক্রিয়াকরণ ত্রুটি: বৈধ JSON পাওয়া যায়নি")
-
-        return llm_response
-
-    except json.JSONDecodeError as e:
-        raise Exception(f"প্রক্রিয়াকরণ ত্রুটি: {str(e)}")
-    except Exception as e:
-        error_msg = str(e).replace('\n', ' ').replace('\r', ' ')[:200]
-        raise Exception(f"প্রক্রিয়াকরণ ত্রুটি: {error_msg}")
+        try:
+            async with session.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {openrouter_api_key}",
+                    "HTTP-Referer": "http://localhost:5173",
+                    "X-Title": "Kothakunjo Search Engine",
+                },
+                json={
+                    "model": "deepseek/deepseek-r1-0528:free",
+                    "messages": [{
+                        "role": "system",
+                        "content": "You are a JSON-only Bengali translator. Return valid JSON with: summary, sources. No additional text."
+                    }, {
+                        "role": "user",
+                        "content": translation_prompt
+                    }],
+                    "temperature": 0.1,
+                    "max_tokens": 2000
+                }
+            ) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    raise Exception(f"DeepSeek API error: {response.status} - {error_text}")
+                data = await response.json()
+                print(f"Raw DeepSeek Response: {data}")  # Debug log
+                content = data["choices"][0]["message"]["content"]
+                if not content or not content.strip():
+                    raise Exception("প্রক্রিয়াকরণ ত্রুটি: DeepSeek প্রতিক্রিয়া খালি")
+                try:
+                    # Clean potential trailing incomplete JSON
+                    content = re.sub(r',\s*]', ']', content)  # Fix unterminated arrays
+                    content = re.sub(r',\s*}', '}', content)  # Fix unterminated objects
+                    llm_response = json.loads(content)
+                except json.JSONDecodeError as e:
+                    json_match = re.search(r'\{(?:[^{}]|(?R))*\}', content, re.DOTALL)  # Robust JSON extraction
+                    if json_match:
+                        llm_response = json.loads(json_match.group(0))
+                    else:
+                        raise Exception("প্রক্রিয়াকরণ ত্রুটি: বৈধ JSON পাওয়া যায়নি")
+                return llm_response
+        except json.JSONDecodeError as e:
+            raise Exception(f"প্রক্রিয়াকরণ ত্রুটি: {str(e)}")
+        except Exception as e:
+            error_msg = str(e).replace('\n', ' ').replace('\r', ' ')[:200]
+            raise Exception(f"প্রক্রিয়াকরণ ত্রুটি: {error_msg}")
