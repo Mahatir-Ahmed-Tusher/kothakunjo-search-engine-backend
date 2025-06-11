@@ -19,16 +19,15 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY")
 
-if not MISTRAL_API_KEY or not OPENROUTER_API_KEY or not SERPAPI_API_KEY:
+if not MISTRAL_API_KEY or not SERPAPI_API_KEY:
     logger.error("Missing required API keys in .env file")
     raise RuntimeError("API keys not configured properly")
 
 app = FastAPI(
     title="Kothakunjo Search Engine",
-    description="A Bengali search engine using SerpAPI, Mistral, and DeepSeek",
+    description="A Bengali search engine using SerpAPI, Google, and Mistral for summarization and translation",
     version="1.0.0",
     contact={
         "name": "Support",
@@ -49,20 +48,20 @@ class UTF8JSONResponse(JSONResponse):
 async def http_exception_handler(request: Request, exc: HTTPException):
     return UTF8JSONResponse(
         status_code=exc.status_code,
-        content={"detail": exc.detail},
+        content={"detail": str(exc.detail)},
         headers=exc.headers
     )
 
 # CORS Configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "https://kothakunjo.vercel.app"],
+    allow_origins=["http://localhost:5173", "https://kothakunjo.vercel.app", "https://kothakunjo-search-engine-backend.onrender.com"],
     allow_methods=["POST", "GET", "OPTIONS"],
     allow_headers=["*"],
     allow_credentials=True,
     max_age=600,
 )
-logger.info("CORS configured with origins: %s", ["http://localhost:5173", "https://kothakunjo.vercel.app"])
+logger.info("CORS configured with origins: %s", ["http://localhost:5173", "https://kothakunjo.vercel.app", "https://kothakunjo.onrender.com"])
 
 class SearchRequest(BaseModel):
     query: str = Field(..., min_length=2, max_length=500, example="জীবনের অর্থ কী?")
@@ -98,7 +97,6 @@ async def perform_search(request: SearchRequest):
         result = await search_and_present(
             query=request.query,
             mistral_api_key=MISTRAL_API_KEY,
-            openrouter_api_key=OPENROUTER_API_KEY,
             serpapi_api_key=SERPAPI_API_KEY,
             language=request.language
         )
@@ -130,7 +128,6 @@ async def health_check():
         "version": app.version,
         "services": {
             "mistral": bool(MISTRAL_API_KEY),
-            "openrouter": bool(OPENROUTER_API_KEY),
             "serpapi": bool(SERPAPI_API_KEY)
         }
     }
